@@ -92,7 +92,7 @@ router = (app, comCenter) ->
         else
             message_obj = {code:'error'}
 
-        comCenter.handleTask(message_obj,'devx')
+        comCenter.handleTask(message_obj,req.params.username)
         return send200(res)
 
 # Attach the frontend to the supplied http.Server.

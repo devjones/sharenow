@@ -126,6 +126,7 @@ class ComCenter
         clientId = comCenter.connectedClients[toUser]
         fromUser = 'SERVER'
 
+
         #Send message to the recipient user
         nowjs.getClient clientId, ->
             @now.receiveMessage({message:message,fromUser:fromUser,messageType:'taskMessage'})

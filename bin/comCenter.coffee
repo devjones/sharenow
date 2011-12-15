@@ -56,6 +56,16 @@ class ComCenter
 
             console.log("Joined: " + @now.name)
 
+        nowjs.on('disconnect', ->
+            if @now.group?
+                nowjs.getGroup(@now.group).now.receiveMessage({fromUser:"server", message:"#{@now.name} has left the session.", messageType:'serverMessage'})
+
+
+            #remove the client from any rooms he's currently in
+            nowjs.getGroup(@now.group).removeUser(@user.clientId)
+
+        )
+
         @everyone.now.joinGroup = (groupName) ->
             #remove the client from any rooms he's currently in
             nowjs.getGroup(@now.group).removeUser(@user.clientId)
@@ -72,10 +82,8 @@ class ComCenter
             if not comCenter.activeDocs[groupName]?
                 comCenter.activeDocs[groupName] = {}
 
-
-
-            #TODO:WILL this send to a specific user or to everyone
-            @now.receiveMessage({fromUser:"server", message:"You're now in " + @now.group, messageType:'serverMessage'})
+            if @now.group?
+                nowjs.getGroup(@now.group).now.receiveMessage({fromUser:"server", message:"#{@now.name} has joined the session.", messageType:'serverMessage'})
 
         @everyone.now.callGroupFunction = (functionInfo) ->
             #Call a specific function for everyone in a group

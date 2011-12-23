@@ -2,6 +2,8 @@
 coffee = require 'coffee-script'
 nowjs = require 'now'
 tasks = require './tasks'
+redis = require 'redis'
+redis_client = redis.createClient()
 
 # ComCenter
 class ComCenter
@@ -81,6 +83,7 @@ class ComCenter
             #Create an object to represent activedocs in a specific group
             if not comCenter.activeDocs[groupName]?
                 comCenter.activeDocs[groupName] = {}
+                redis_client.sadd('activeDocs','project:' + groupName)
 
             if @now.group?
                 nowjs.getGroup(@now.group).now.receiveMessage({fromUser:"server", message:"#{@now.name} has joined the session.", messageType:'serverMessage'})
@@ -116,6 +119,7 @@ class ComCenter
                 for attr,value of docInfo
 
                     comCenter.activeDocs[@now.group][attr] = value
+                    redis_client.hmset("project:#{@now.group}",attr,value)
 
         @everyone.now.getUpdatedDocs = (next) ->
             #return objects containing all documents that have been opened by members of the group

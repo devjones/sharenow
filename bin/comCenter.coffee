@@ -110,10 +110,11 @@ class ComCenter
 
         @everyone.now.addActiveDoc = (docInfo) ->
             #add the specified document to global list of docs that have been updated and not saved to disk
-            if @now.group?
-                for attr,value of docInfo
-                    redis_client.hmset("project:#{@now.group}:to_sync",attr,value)
-                    redis_client.hmset("project:#{@now.group}:to_push",attr,value)
+            for file_slug,value of docInfo
+                project_id = value.project_id
+                file_rel_path = value.file_rel_path
+                redis_client.hmset("project:#{project_id}:to_sync",file_slug,file_rel_path)
+                redis_client.hmset("project:#{project_id}:to_push",file_slug,file_rel_path)
 
 
 

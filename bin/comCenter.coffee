@@ -112,7 +112,8 @@ class ComCenter
             #add the specified document to global list of docs that have been updated and not saved to disk
             if @now.group?
                 for attr,value of docInfo
-                    redis_client.hmset("project:#{@now.group}",attr,value)
+                    redis_client.hmset("project:#{@now.group}:to_sync",attr,value)
+                    redis_client.hmset("project:#{@now.group}:to_push",attr,value)
 
 
 

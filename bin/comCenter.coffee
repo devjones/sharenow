@@ -12,7 +12,6 @@ class ComCenter
     server: null
     everyone: null
     port: null
-    activeDocs : {}
     connectedClients: {}
 
 
@@ -80,10 +79,6 @@ class ComCenter
             console.log '==========================='
             console.log JSON.stringify(@now.group)
 
-            #Create an object to represent activedocs in a specific group
-            if not comCenter.activeDocs[groupName]?
-                comCenter.activeDocs[groupName] = {}
-                redis_client.sadd('activeDocs','project:' + groupName)
 
             if @now.group?
                 nowjs.getGroup(@now.group).now.receiveMessage({fromUser:"server", message:"#{@now.name} has joined the session.", messageType:'serverMessage'})
@@ -115,18 +110,10 @@ class ComCenter
 
         @everyone.now.addActiveDoc = (docInfo) ->
             #add the specified document to global list of docs that have been updated and not saved to disk
-            if @now.group? and comCenter.activeDocs[@now.group]?
+            if @now.group?
                 for attr,value of docInfo
-
-                    comCenter.activeDocs[@now.group][attr] = value
                     redis_client.hmset("project:#{@now.group}",attr,value)
 
-        @everyone.now.getUpdatedDocs = (next) ->
-            #return objects containing all documents that have been opened by members of the group
-            @now.activeDocs = comCenter.activeDocs[@now.group]
-
-            if next?
-                next()
 
 
     # This function will be exposed over HTTP to update a user when tasks are complete

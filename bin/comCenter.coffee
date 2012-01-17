@@ -13,6 +13,7 @@ class ComCenter
     everyone: null
     port: null
     connectedClients: {}
+    groupData: {}
 
 
     # Initialise
@@ -34,6 +35,7 @@ class ComCenter
     setupComCenter: ->
         comCenter = @
         connectedClients = @connectedClients
+        groupData = @groupData
 
         #Trigger when each client connects
         @everyone.on 'connect', ->
@@ -68,6 +70,7 @@ class ComCenter
         )
 
         @everyone.now.joinGroup = (groupName) ->
+            console.log('groupname: '+groupName)
             #remove the client from any rooms he's currently in
             nowjs.getGroup(@now.group).removeUser(@user.clientId)
 
@@ -79,9 +82,30 @@ class ComCenter
             console.log '==========================='
             console.log JSON.stringify(@now.group)
 
+            #Create the groupData storage object if it doesn't already exist
+            if not groupData[@now.group]?
+                groupData[@now.group] = {}
+
 
             if @now.group?
                 nowjs.getGroup(@now.group).now.receiveMessage({fromUser:"server", message:"#{@now.name} has joined the session.", messageType:'serverMessage'})
+
+
+            #Tell the new connecting user if the host is connected and run the corresponding function if so
+            if groupData[@now.group].hostConnected == true
+
+                #clientId of the requesting client
+                clientId = @user.clientId
+
+                functionInfo = {functionName:'hostIsConnected',args:groupData[@now.group]}
+
+
+                #Send message to the requesting user
+                nowjs.getClient clientId, ->
+                    @now.receiveMessage({message:functionInfo, fromUser:"server", messageType:'groupFunction'})
+
+
+
 
         @everyone.now.callGroupFunction = (functionInfo) ->
             #Call a specific function for everyone in a group
@@ -106,6 +130,25 @@ class ComCenter
             #Send message to the recipient user
             nowjs.getClient clientId, ->
                 @now.receiveMessage({message:message,fromUser:fromUser,messageType:'privateMessage'})
+
+
+
+
+        @everyone.now.updateGroupData = (data) ->
+            #data should be an object.  Update groupData with the data object
+
+            for key,val of data
+                groupData[@now.group][key] = val
+
+        @everyone.now.connectHost = ->
+            groupData[@now.group].hostConnected = true
+
+            functionInfo = {functionName:'hostIsConnected',args:groupData[@now.group]}
+
+            #Tell all members that the host is connected
+            if @now.group?
+                console.log 'tocall hostIsConnected'
+                nowjs.getGroup(@now.group).now.receiveMessage({message:functionInfo, fromUser:@now.name, messageType:'groupFunction'})
 
 
         @everyone.now.addActiveDoc = (docInfo) ->

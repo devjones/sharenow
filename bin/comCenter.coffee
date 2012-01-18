@@ -63,6 +63,9 @@ class ComCenter
             if @now.group?
                 nowjs.getGroup(@now.group).now.receiveMessage({fromUser:"server", message:"#{@now.name} has left the session.", messageType:'serverMessage'})
 
+            if groupData[@now.group].hostClientId == @user.clientId
+                groupData[@now.group].hostConnected == false
+
 
             #remove the client from any rooms he's currently in
             nowjs.getGroup(@now.group).removeUser(@user.clientId)
@@ -70,7 +73,7 @@ class ComCenter
         )
 
         @everyone.now.joinGroup = (groupName) ->
-            console.log('groupname: '+groupName)
+            console.log('groupname: ' + groupName)
             #remove the client from any rooms he's currently in
             nowjs.getGroup(@now.group).removeUser(@user.clientId)
 
@@ -132,8 +135,6 @@ class ComCenter
                 @now.receiveMessage({message:message,fromUser:fromUser,messageType:'privateMessage'})
 
 
-
-
         @everyone.now.updateGroupData = (data) ->
             #data should be an object.  Update groupData with the data object
 
@@ -141,7 +142,10 @@ class ComCenter
                 groupData[@now.group][key] = val
 
         @everyone.now.connectHost = ->
+            #Update info on the host for the session
             groupData[@now.group].hostConnected = true
+            groupData[@now.group].hostClientId = @user.clientId
+
 
             functionInfo = {functionName:'hostIsConnected',args:groupData[@now.group]}
 

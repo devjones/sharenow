@@ -45,7 +45,7 @@ class ComCenter
             #Remove client from the connectedClients object
             delete connectedClients[@now.name]
 
-
+            console.log 'h1'
             console.log("Left: " + @now.name)
 
 
@@ -64,8 +64,7 @@ class ComCenter
                 nowjs.getGroup(@now.group).now.receiveMessage({fromUser:"server", message:"#{@now.name} has left the session.", messageType:'serverMessage'})
 
             if groupData[@now.group].hostClientId == @user.clientId
-                groupData[@now.group].hostConnected == false
-
+                groupData[@now.group].hostConnected = false
 
             #remove the client from any rooms he's currently in
             nowjs.getGroup(@now.group).removeUser(@user.clientId)

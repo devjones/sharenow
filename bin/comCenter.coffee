@@ -3,6 +3,7 @@ coffee = require 'coffee-script'
 nowjs = require 'now'
 tasks = require './tasks'
 redis = require 'redis'
+spawn = require('child_process').spawn
 redis_client = redis.createClient()
 
 # ComCenter
@@ -14,12 +15,14 @@ class ComCenter
     port: null
     connectedClients: {}
     groupData: {}
+    projects : {}
 
 
     # Initialise
-    constructor: (server,ioserver) ->
+    constructor: (server,ioserver,options) ->
         # Prepare
         @server = server
+        @options = options
 
 
         #Create the everyone object for nowjs.  clientWrite determines whether client can change server scope variables
@@ -28,7 +31,6 @@ class ComCenter
 
         #Setup up routes for access to the comCenter
         @server.use tasks(@)
-
         @setupComCenter()
 
 
@@ -36,23 +38,37 @@ class ComCenter
         comCenter = @
         connectedClients = @connectedClients
         groupData = @groupData
+        projects = @projects
+        options = @options
+
+        @initializeProjects()
 
         #Trigger when each client connects
         @everyone.on 'connect', ->
             console.log("Connected: " + @user.clientId)
 
         @everyone.on 'disconnect', ->
+            oldProject = connectedClients[@now.name]?.activeProject
+
+            # Decrement the number of active users in the old project for the client
+            if oldProject?
+                projects.updateActiveUsers(oldProject,-1)
+
             #Remove client from the connectedClients object
             delete connectedClients[@now.name]
 
-            console.log 'h1'
             console.log("Left: " + @now.name)
 
 
 
         @everyone.now.handshake = ->
             #Add client to the connectedClients object
-            connectedClients[@now.name] = @user.clientId
+            connectedClients[@now.name] = {}
+            connectedClients[@now.name].clientId = @user.clientId
+            connectedClients[@now.name].activeProject = null
+            connectedClients[@now.name].subscribedProjects = null
+
+
             console.log 'showing connected clients after handshake'
             console.log '=========================================='
             console.log JSON.stringify(connectedClients)
@@ -70,6 +86,21 @@ class ComCenter
             nowjs.getGroup(@now.group).removeUser(@user.clientId)
 
         )
+
+        @everyone.now.subscribeToProjects = (projectCollection) ->
+
+            for project in projectCollection
+                console.log "now listening for project #{project.id}"
+                #add the client to start listening to changes in the projects
+                nowjs.getGroup("projectSubscribers_#{project.id}").addUser(@user.clientId)
+
+        @everyone.now.unsubscribeFromProjects = (projectCollection) ->
+
+            for project in projectCollection
+                # remove the client from listening to the projects
+                nowjs.getGroup("projectSubscribers_#{project.id}").removeUser(@user.clientId)
+
+
 
         @everyone.now.joinGroup = (groupName) ->
             console.log('groupname: ' + groupName)
@@ -107,8 +138,6 @@ class ComCenter
                     @now.receiveMessage({message:functionInfo, fromUser:"server", messageType:'groupFunction'})
 
 
-
-
         @everyone.now.callGroupFunction = (functionInfo) ->
             #Call a specific function for everyone in a group
             if @now.group?
@@ -125,7 +154,7 @@ class ComCenter
         @everyone.now.sendPrivateMessage = (message,toUser) ->
             #get the clientId from connected users
 
-            clientId = connectedClients[toUser]
+            clientId = connectedClients[toUser].clientId
 
             fromUser = @now.name
 
@@ -164,13 +193,103 @@ class ComCenter
 
 
 
+        @everyone.now.changeActiveProject = (projectId) ->
+            console.log 'changing the active project'
+            console.log projectId
+
+            fromUser = @now.name
+
+            console.log 'fromUser---------'
+            console.log fromUser
+            console.log 'connectedClients---------'
+            console.log connectedClients
+            console.log 'connectedClients[fromUser]---------'
+            console.log connectedClients[fromUser]
+
+            oldProject = connectedClients[fromUser]?.activeProject
+
+            # Decrement the number of active users in the old project for the client
+            if oldProject?
+                console.log "oldproject is:\n" + JSON.stringify(oldProject)
+                projects.updateActiveUsers(oldProject,-1)
+
+            connectedClients[fromUser].activeProject = projectId
+            projects.updateActiveUsers(projectId,1)
+
+            console.log 'connectedClients[fromUser]---------'
+            console.log connectedClients[fromUser]
+
+
+
+        @everyone.now.testFun = (args,callback) ->
+
+            console.log 'the promise on the server'
+            console.log(JSON.stringify(callback))
+            ###
+            setTimeout(
+                ->
+                    aprom.resolve('done')
+                args.length * 1000
+            )
+            ###
+
+            return callback('woah')
+
+
+
+
+
+        #Handle file system access
+        @everyone.now.runCommand = (params,userData, callback) ->
+            console.log(JSON.stringify(params))
+            console.log(JSON.stringify(userData))
+
+            if userData.username? and userData.project?.slug?
+                projectPath = "#{options.projectRoot}/projects/#{userData.username}/#{userData.project.slug}/"
+            else
+                return
+
+            console.log('path: ' + projectPath)
+
+            args = params[1..params.length]
+            program = params[0]
+
+            commandOptions = {
+                cwd: projectPath
+            }
+            command = spawn(program,args,commandOptions)
+
+            output = ''
+            # Handle child process output stream events
+            command.stdout.on('data',(data) ->
+                console.log 'receive data from process'
+                output += data.toString('utf8')
+
+                # Put the exit event as a nested function
+                command.on('exit',  (code) ->
+                    console.log 'process ending'
+
+                    if code != 0
+                        output = 'There was an error'
+                    console.log 'code is: ' + code.toString()
+                    console.log output
+                    callback(output)
+                )
+            )
+
+            # Ignoring stderr for now...
+            command.stderr.on('data',(data) ->
+                output.concat(data)
+            )
+
+
     # This function will be exposed over HTTP to update a user when tasks are complete
     handleTask: (message,toUser) ->
         comCenter = @
         console.log 'receiving handleTask'
 
         #get the clientId from connected users
-        clientId = comCenter.connectedClients[toUser]
+        clientId = comCenter.connectedClients[toUser].clientId
         fromUser = 'SERVER'
 
 
@@ -180,11 +299,77 @@ class ComCenter
 
 
 
+    sendProjectUpdates: ->
+        # Identifies all projects that have had a change in the number of active users.
+
+        projects = @projects
+        updatedProjects = []
+
+        if projects.objects?
+
+            # Identify those projects that have had a change in the number of active users.
+            for project_id, project_status of projects.objects
+                if project_status.hasChanged == true
+                    updatedProject = {id: project_id, activeUsers: project_status.activeUsers}
+                    updatedProjects.push(updatedProject)
+
+
+                    projects.objects[project_id].hasChanged = false
+
+            # For each project that has had a change in the number of active users, send an update to the registered listeners to each project
+            for project in updatedProjects
+                data = {functionName:'updateProjectStatus',args:updatedProjects}
+                nowjs.getGroup("projectSubscribers_#{project.id}").now.receiveMessage({message:data, fromUser:'SERVER', messageType:'groupFunction'})
+
+
+
+    initializeProjects: ->
+        projects = @projects
+        projects.objects = {}
+
+        projects.updateActiveUsers= (projectId,change) ->
+
+            if not projects.objects[projectId]?
+                projects.objects[projectId] = {}
+
+            if not projects.objects[projectId].activeUsers?
+                projects.objects[projectId].activeUsers = 0
+
+            projects.objects[projectId].activeUsers += change
+            projects.objects[projectId].hasChanged = true
+
+        ###
+        # Omitting the listeners for now, to keep app simple.
+        projects.addListener = (projectId, clientId) ->
+
+            if not projects.objects[projectId]?
+                projects.objects[projectId] = {}
+
+            if not projects.objects[projectId].listeners?
+                projects.objects[projectId].listeners = []
+
+            projects.objects[projectId].listeners.push(clientId)
+        ###
+
+        # Update all users on the dashboard of changes to the number of active users in projects
+        setInterval(
+            =>
+                @sendProjectUpdates()
+
+            3000
+        )
+
+
+
+
+        #child.stdout.
+
+
 
 # API
 comcenter =
-    createInstance: (server,options) ->
-        return new ComCenter(server,options)
+    createInstance: (server,io,options) ->
+        return new ComCenter(server,io,options)
 
 # Export
 module.exports = comcenter

@@ -30,6 +30,8 @@ module.exports = {
 	// Set staticpath: null to disable.
 	staticpath: '/share',
 
+    projectRoot: '/home/devx/code/livecode/',
+
 	// REST frontend options. Set rest: null to disable REST frontend.
 	rest: {
 	},
